@@ -63,21 +63,74 @@ def find_annotation_file(annotation_dir: str, split: str) -> str:
             return os.path.abspath(c)
     raise FileNotFoundError(f"Cannot find annotation file for split '{split}'. Checked: {candidates}")
 
-def find_image_file(image_dir: str, image_name: str) -> str:
+def resolve_coco_image_dir(configured_dir: str, sample_image: str = "COCO_val2014_000000310196.jpg") -> str:
     """
-    Resolves image file path, checking subfolders if necessary.
+    Auto-detects and validates the COCO val2014 image directory on Kaggle or local environments.
+    Checks configured directory, known Kaggle paths, and dynamically searches /kaggle/input if needed.
     """
     candidates = [
-        os.path.join(image_dir, image_name),
-        os.path.join(image_dir, "val2014", image_name),
+        configured_dir,
+        os.path.join(configured_dir, "val2014") if configured_dir else "",
+        "/kaggle/input/datasets/biminhco/val2014/val2014",
+        "/kaggle/input/datasets/biminhco/val2014",
+        "/kaggle/input/biminhco/val2014/val2014",
+        "/kaggle/input/biminhco/val2014",
+        "/kaggle/input/val2014/val2014",
+        "/kaggle/input/val2014",
+        "/kaggle/input/coco-2014-dataset/val2014",
+        "/kaggle/input/coco2014/val2014",
+    ]
+    for cand in candidates:
+        if cand and os.path.isdir(cand):
+            if os.path.isfile(os.path.join(cand, sample_image)):
+                print(f"[Image Dir] Verified COCO val2014 directory: {cand}")
+                return os.path.abspath(cand)
+            try:
+                files = os.listdir(cand)
+                if any(f.startswith("COCO_val2014_") for f in files[:20]):
+                    print(f"[Image Dir] Verified COCO val2014 directory: {cand}")
+                    return os.path.abspath(cand)
+            except Exception:
+                pass
+
+    # Dynamic auto-discovery inside /kaggle/input
+    if os.path.isdir("/kaggle/input"):
+        print("[Image Dir] Searching /kaggle/input for COCO val2014 images...")
+        for root, dirs, files in os.walk("/kaggle/input"):
+            depth = root.count(os.sep) - "/kaggle/input".count(os.sep)
+            if depth > 5:
+                continue
+            if sample_image in files or any(f.startswith("COCO_val2014_") for f in files[:10]):
+                print(f"[Image Dir] Successfully auto-detected image directory: {root}")
+                return os.path.abspath(root)
+
+    print(f"[Image Dir] Notice: Using configured path: {configured_dir}")
+    return configured_dir
+
+def find_image_file(image_dir: str, image_name: str) -> str:
+    """
+    Resolves image file path, checking subfolders and known Kaggle dataset locations.
+    """
+    direct = os.path.join(image_dir, image_name)
+    if os.path.isfile(direct):
+        return direct
+    sub = os.path.join(image_dir, "val2014", image_name)
+    if os.path.isfile(sub):
+        return sub
+
+    candidates = [
+        f"/kaggle/input/datasets/biminhco/val2014/val2014/{image_name}",
+        f"/kaggle/input/datasets/biminhco/val2014/{image_name}",
+        f"/kaggle/input/biminhco/val2014/val2014/{image_name}",
+        f"/kaggle/input/val2014/val2014/{image_name}",
+        f"/kaggle/input/val2014/{image_name}",
         f"/kaggle/input/coco-2014-dataset/val2014/{image_name}",
         f"/kaggle/input/coco2014/val2014/{image_name}",
-        f"/kaggle/input/val2014/{image_name}",
     ]
     for c in candidates:
         if os.path.isfile(c):
             return c
-    return os.path.join(image_dir, image_name)
+    return direct
 
 def run_single_split(
     model,
@@ -247,7 +300,7 @@ def main():
     set_seed(args.seed)
     config = load_config(args.config_path)
 
-    image_dir = config["coco_val2014_images"]
+    image_dir = resolve_coco_image_dir(config.get("coco_val2014_images", ""))
     annotation_dir = config["pope_coco_annotation_dir"]
 
     # Select model checkpoint

@@ -1,6 +1,6 @@
 # Kaggle environment configuration for VCD POPE evaluation
 # COCO 2014 images directory on Kaggle
-coco_val2014_images: "/kaggle/input/coco-2014-dataset/val2014"
+coco_val2014_images: "/kaggle/input/datasets/biminhco/val2014/val2014"
 
 # POPE COCO annotations directory (located in cloned VCD repo or uploaded dataset)
 pope_coco_annotation_dir: "/kaggle/working/VCD/experiments/data/POPE/coco"
