@@ -1,0 +1,101 @@
+import torch
+from transformers import AutoProcessor, LlavaForConditionalGeneration
+from vcd_core.vcd_add_noise import add_diffusion_noise
+from vcd_core.vcd_decoding import apply_vcd_penalty
+import copy
+
+class LLaVAVCDWrapper:
+    def __init__(self, model_path, device="cuda:0", dtype=torch.bfloat16):
+        self.device = device
+        self.dtype = dtype
+        self.processor = AutoProcessor.from_pretrained(model_path)
+        self.model = LlavaForConditionalGeneration.from_pretrained(
+            model_path,
+            torch_dtype=dtype,
+            device_map=device
+        )
+        self.model.eval()
+
+    @torch.inference_mode()
+    def generate(self, prompt, image, use_vcd=False, vcd_noise_step=500, vcd_alpha=1.0, vcd_beta=0.1, **gen_kwargs):
+        """
+        Generates text given a prompt and an image. 
+        If use_vcd is True, applies Visual Contrastive Decoding.
+        """
+        inputs = self.processor(text=prompt, images=image, return_tensors="pt").to(self.device, self.dtype)
+        
+        # We need input_ids as long, not bfloat16
+        inputs["input_ids"] = inputs["input_ids"].to(torch.long)
+
+        if not use_vcd:
+            output_ids = self.model.generate(**inputs, **gen_kwargs)
+            return self.processor.decode(output_ids[0], skip_special_tokens=True)
+
+        # ---- VCD Generation Loop ----
+        # 1. Create Distorted Image
+        # original image is already in inputs["pixel_values"]
+        pixel_values = inputs["pixel_values"]
+        pixel_values_cd = add_diffusion_noise(pixel_values, vcd_noise_step)
+        
+        inputs_cd = copy.deepcopy(inputs)
+        inputs_cd["pixel_values"] = pixel_values_cd
+        
+        # 2. Extract inputs for custom generation loop
+        input_ids = inputs["input_ids"]
+        attention_mask = inputs["attention_mask"]
+        attention_mask_cd = inputs_cd["attention_mask"].clone()
+        
+        max_new_tokens = gen_kwargs.get("max_new_tokens", 128)
+        eos_token_id = self.model.config.eos_token_id
+        if isinstance(eos_token_id, int):
+            eos_token_id = [eos_token_id]
+            
+        past_key_values = None
+        past_key_values_cd = None
+
+        # Custom auto-regressive generation loop
+        for step in range(max_new_tokens):
+            # Forward original
+            outputs = self.model(
+                input_ids=input_ids if past_key_values is None else input_ids[:, -1:],
+                attention_mask=attention_mask,
+                pixel_values=pixel_values if past_key_values is None else None,
+                past_key_values=past_key_values,
+                use_cache=True
+            )
+            next_token_logits = outputs.logits[:, -1, :]
+            past_key_values = outputs.past_key_values
+            
+            # Forward distorted
+            outputs_cd = self.model(
+                input_ids=input_ids if past_key_values_cd is None else input_ids[:, -1:],
+                attention_mask=attention_mask_cd,
+                pixel_values=pixel_values_cd if past_key_values_cd is None else None,
+                past_key_values=past_key_values_cd,
+                use_cache=True
+            )
+            next_token_logits_cd = outputs_cd.logits[:, -1, :]
+            past_key_values_cd = outputs_cd.past_key_values
+            
+            # Apply VCD penalty
+            cd_logits = apply_vcd_penalty(next_token_logits, next_token_logits_cd, vcd_alpha, vcd_beta)
+            
+            # Sampling logic (greedy for simplicity here, can expand to temperature/top-p based on gen_kwargs)
+            # Typically benchmark like POPE use greedy decoding, while CHAIR might use sampling.
+            do_sample = gen_kwargs.get("do_sample", False)
+            if do_sample:
+                temperature = gen_kwargs.get("temperature", 1.0)
+                cd_logits = cd_logits / temperature
+                probs = torch.nn.functional.softmax(cd_logits, dim=-1)
+                next_token = torch.multinomial(probs, num_samples=1)
+            else:
+                next_token = torch.argmax(cd_logits, dim=-1, keepdim=True)
+                
+            input_ids = torch.cat([input_ids, next_token], dim=-1)
+            attention_mask = torch.cat([attention_mask, torch.ones((attention_mask.shape[0], 1), device=self.device, dtype=attention_mask.dtype)], dim=-1)
+            attention_mask_cd = torch.cat([attention_mask_cd, torch.ones((attention_mask_cd.shape[0], 1), device=self.device, dtype=attention_mask_cd.dtype)], dim=-1)
+            
+            if next_token.item() in eos_token_id:
+                break
+                
+        return self.processor.decode(input_ids[0], skip_special_tokens=True)
