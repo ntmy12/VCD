@@ -72,9 +72,16 @@ class Qwen2VLVCDWrapper:
         image_grid_thw = inputs.get("image_grid_thw", None)
         
         max_new_tokens = gen_kwargs.get("max_new_tokens", 128)
-        eos_token_id = self.model.generation_config.eos_token_id
+        eos_token_id = getattr(self.model, "generation_config", None)
+        eos_token_id = getattr(eos_token_id, "eos_token_id", None) if eos_token_id else None
+        if eos_token_id is None and hasattr(self.model, "config"):
+            eos_token_id = getattr(self.model.config, "eos_token_id", None)
+        if eos_token_id is None and hasattr(self.processor, "tokenizer"):
+            eos_token_id = getattr(self.processor.tokenizer, "eos_token_id", None)
         if isinstance(eos_token_id, int):
             eos_token_id = [eos_token_id]
+        elif eos_token_id is None:
+            eos_token_id = []
             
         past_key_values = None
         past_key_values_cd = None
