@@ -5,16 +5,20 @@ from vcd_core.vcd_decoding import apply_vcd_penalty
 import copy
 
 class LLaVAVCDWrapper:
-    def __init__(self, model_path, device="cuda:0", dtype=torch.bfloat16):
-        self.device = device
+    def __init__(self, model_path, device="auto", dtype=torch.bfloat16):
         self.dtype = dtype
         self.processor = AutoProcessor.from_pretrained(model_path)
         self.model = LlavaForConditionalGeneration.from_pretrained(
             model_path,
             torch_dtype=dtype,
+            low_cpu_mem_usage=True,
             device_map=device
         )
         self.model.eval()
+        if hasattr(self.model, "device"):
+            self.device = self.model.device
+        else:
+            self.device = next(self.model.parameters()).device
 
     @torch.inference_mode()
     def generate(self, prompt, image, use_vcd=False, vcd_noise_step=500, vcd_alpha=1.0, vcd_beta=0.1, **gen_kwargs):
@@ -22,10 +26,15 @@ class LLaVAVCDWrapper:
         Generates text given a prompt and an image. 
         If use_vcd is True, applies Visual Contrastive Decoding.
         """
-        inputs = self.processor(text=prompt, images=image, return_tensors="pt").to(self.device, self.dtype)
-        
-        # We need input_ids as long, not bfloat16
-        inputs["input_ids"] = inputs["input_ids"].to(torch.long)
+        if "<image>" not in prompt:
+            prompt = f"USER: <image>\n{prompt}\nASSISTANT:"
+
+        inputs = self.processor(text=prompt, images=image, return_tensors="pt")
+        inputs = {k: v.to(self.device) if hasattr(v, "to") else v for k, v in inputs.items()}
+        if "pixel_values" in inputs and self.dtype is not None:
+            inputs["pixel_values"] = inputs["pixel_values"].to(self.dtype)
+        if "input_ids" in inputs:
+            inputs["input_ids"] = inputs["input_ids"].to(torch.long)
 
         if not use_vcd:
             output_ids = self.model.generate(**inputs, **gen_kwargs)
@@ -91,9 +100,9 @@ class LLaVAVCDWrapper:
             else:
                 next_token = torch.argmax(cd_logits, dim=-1, keepdim=True)
                 
-            input_ids = torch.cat([input_ids, next_token], dim=-1)
-            attention_mask = torch.cat([attention_mask, torch.ones((attention_mask.shape[0], 1), device=self.device, dtype=attention_mask.dtype)], dim=-1)
-            attention_mask_cd = torch.cat([attention_mask_cd, torch.ones((attention_mask_cd.shape[0], 1), device=self.device, dtype=attention_mask_cd.dtype)], dim=-1)
+            input_ids = torch.cat([input_ids, next_token.to(input_ids.device)], dim=-1)
+            attention_mask = torch.cat([attention_mask, torch.ones((attention_mask.shape[0], 1), device=attention_mask.device, dtype=attention_mask.dtype)], dim=-1)
+            attention_mask_cd = torch.cat([attention_mask_cd, torch.ones((attention_mask_cd.shape[0], 1), device=attention_mask_cd.device, dtype=attention_mask_cd.dtype)], dim=-1)
             
             if next_token.item() in eos_token_id:
                 break

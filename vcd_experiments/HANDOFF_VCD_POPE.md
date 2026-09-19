@@ -28,16 +28,22 @@ Toàn bộ dữ liệu (ảnh COCO, file annotation POPE) và model weights đã
   - `coco_pope_random.json`
   - `coco_pope_popular.json`
   - `coco_pope_adversarial.json`
-- **Cách sinh câu trả lời:** Không được dùng chênh lệch logit của 2 token "Yes" và "No" ở bước cuối. Bắt buộc phải **gọi hàm `generate()` (với tham số `use_vcd=True` hoặc `False` để so sánh) để model sinh ra chuỗi văn bản hoàn chỉnh** (text generation thật). Theo default thì logic trong wrapper đang dùng Greedy Decoding, phù hợp với yêu cầu POPE.
+
+### 3.2. Điều kiện Generation & Prompt (ĐIỀU KIỆN BẮT BUỘC)
+- **Max New Tokens:** Bắt buộc cấu hình `max_new_tokens = 6` (truyền vào `gen_kwargs` hoặc `model.generate()`, không dùng default 128).
+- **Decoding Method:** Bắt buộc chạy **Greedy Decoding** (`do_sample=False`, `temperature=0.0`, không sampling ngẫu nhiên).
+- **Prompt Suffix cho QwenVL:** Nếu chạy mô hình **Qwen2-VL / QwenVL**, bắt buộc thêm suffix (thêm vào ngay sau câu hỏi): `"Please answer with yes or no."`
+  - *Ví dụ:* `prompt = f"{question} Please answer with yes or no."`
+- **Cách sinh câu trả lời:** Không được dùng chênh lệch logit của 2 token "Yes" và "No" ở bước cuối. Bắt buộc phải **gọi hàm `generate()` (với tham số `use_vcd=True` hoặc `False` để so sánh) để model sinh ra chuỗi văn bản hoàn chỉnh** (text generation thật) với `max_new_tokens=6` và Greedy Decoding.
 - **Parsing:** Viết hàm parse robust (ví dụ: dùng regex, rule-based) để trích xuất câu trả lời "Yes" hoặc "No" từ chuỗi text do model sinh ra.
 - **Metrics cần tính (cho từng split riêng biệt):**
   - Accuracy
   - Precision
   - Recall
   - F1-Score
-- **Output:** Output kết quả thành file `metrics.json`, đồng thời log toàn bộ output thô (raw generated text, label gốc) vào `raw_outputs.jsonl` và các hyperparameter (như `noise_step`, `cd_alpha`, `cd_beta`, seed) vào `run_config.json`. Lưu tất cả vào thư mục `results/<model>_pope_<timestamp>/`.
+- **Output:** Output kết quả thành file `metrics.json`, đồng thời log toàn bộ output thô (raw generated text, label gốc) vào `raw_outputs.jsonl` và các hyperparameter (như `max_new_tokens=6`, `do_sample=False`, `noise_step`, `cd_alpha`, `cd_beta`, seed) vào `run_config.json`. Lưu tất cả vào thư mục `results/<model>_pope_<timestamp>/`.
 
 ## 4. Nguyên tắc chung
 - Code cần viết rõ ràng, module hóa, parse tham số bằng argparse/yaml, đọc đường dẫn từ `configs/data_paths.yaml`. Tuyệt đối không hardcode đường dẫn.
 - Cần có log tiến trình (ví dụ dùng thư viện `tqdm`) khi chạy vì dataset khá lớn.
-- Bắt buộc phải lưu cấu hình, thông số, seed để tiện đối chiếu sau này.
+- Bắt buộc phải lưu cấu hình, thông số (`max_new_tokens=6`, greedy decoding, hyperparams VCD), seed để tiện đối chiếu sau này.
