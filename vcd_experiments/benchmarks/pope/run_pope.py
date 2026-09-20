@@ -132,6 +132,20 @@ def find_image_file(image_dir: str, image_name: str) -> str:
             return c
     return direct
 
+def resolve_dtype(dtype_str: str = "auto") -> torch.dtype:
+    """
+    Resolves precision. On T4, 'auto' selects float16 for hardware Tensor Core acceleration.
+    """
+    if dtype_str == "bf16":
+        return torch.bfloat16
+    elif dtype_str == "fp16":
+        return torch.float16
+    elif dtype_str == "fp32":
+        return torch.float32
+    if torch.cuda.is_available() and torch.cuda.is_bf16_supported():
+        return torch.bfloat16
+    return torch.float16
+
 def run_single_split(
     model,
     model_type: str,
@@ -144,7 +158,7 @@ def run_single_split(
     model_ckpt: str
 ) -> dict:
     """
-    Runs POPE evaluation on a single split.
+    Runs POPE evaluation on a single split with automatic resume capability.
     """
     print(f"\n{'=' * 60}")
     print(f" Starting POPE Evaluation: Split='{split}' | Model='{model_type}' | VCD={args.use_vcd}")
@@ -169,6 +183,25 @@ def run_single_split(
     run_config_file = os.path.join(output_dir, "run_config.json")
     metrics_file = os.path.join(output_dir, "metrics.json")
 
+    # Check for existing outputs to resume
+    results = []
+    completed_ids = set()
+    if os.path.isfile(raw_outputs_file):
+        try:
+            with open(raw_outputs_file, "r", encoding="utf-8") as f_prev:
+                for line in f_prev:
+                    line = line.strip()
+                    if line:
+                        record = json.loads(line)
+                        results.append(record)
+                        completed_ids.add(record.get("question_id"))
+            if completed_ids:
+                print(f"[Resume] Found {len(completed_ids)} completed samples in {raw_outputs_file}. Resuming from sample {len(completed_ids) + 1}...")
+        except Exception as e:
+            print(f"[Resume Warning] Could not parse existing results ({e}), starting fresh.")
+            results = []
+            completed_ids = set()
+
     # Record run config
     config_dict = {
         "model": model_type,
@@ -189,11 +222,13 @@ def run_single_split(
     with open(run_config_file, "w", encoding="utf-8") as f:
         json.dump(config_dict, f, indent=4)
 
-    results = []
-    with open(raw_outputs_file, "w", encoding="utf-8") as f_out:
+    write_mode = "a" if completed_ids else "w"
+    with open(raw_outputs_file, write_mode, encoding="utf-8") as f_out:
         pbar = tqdm(pope_items, desc=f"POPE {split} ({model_type})")
         for idx, item in enumerate(pbar):
             q_id = item.get("question_id", idx)
+            if q_id in completed_ids:
+                continue
             img_name = item["image"]
             question = item["text"]
             label = item["label"]
@@ -295,6 +330,8 @@ def main():
                         help="Root output directory to save results")
     parser.add_argument("--device", type=str, default="auto",
                         help="Device to place model on ('auto', 'cuda:0', etc.)")
+    parser.add_argument("--dtype", type=str, choices=["auto", "bf16", "fp16", "fp32"], default="auto",
+                        help="Model precision ('auto' uses BF16 on Ampere/Hopper, FP16 on T4 for max speed)")
     args = parser.parse_args()
 
     set_seed(args.seed)
@@ -303,17 +340,21 @@ def main():
     image_dir = resolve_coco_image_dir(config.get("coco_val2014_images", ""))
     annotation_dir = config["pope_coco_annotation_dir"]
 
+    # Resolve precision (FP16 on T4 avoids 5x-10x software emulation slowdown)
+    dtype = resolve_dtype(args.dtype)
+    print(f"[Precision] Using resolved precision: {dtype} (requested: {args.dtype})")
+
     # Select model checkpoint
     if args.model == "llava":
         from models.llava_wrapper import LLaVAVCDWrapper
         model_ckpt = config["models"]["llava_1_5_7b_ckpt"]
         print(f"\n[Model] Initializing LLaVA VCD Wrapper from: {model_ckpt}")
-        model = LLaVAVCDWrapper(model_path=model_ckpt, device=args.device, dtype=torch.bfloat16)
+        model = LLaVAVCDWrapper(model_path=model_ckpt, device=args.device, dtype=dtype)
     elif args.model == "qwen2vl":
         from models.qwen2vl_wrapper import Qwen2VLVCDWrapper
         model_ckpt = config["models"]["qwen2vl_7b_instruct_ckpt"]
         print(f"\n[Model] Initializing Qwen2-VL VCD Wrapper from: {model_ckpt}")
-        model = Qwen2VLVCDWrapper(model_path=model_ckpt, device=args.device, dtype=torch.bfloat16)
+        model = Qwen2VLVCDWrapper(model_path=model_ckpt, device=args.device, dtype=dtype)
     else:
         raise ValueError(f"Unsupported model: {args.model}")
 
