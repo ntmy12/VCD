@@ -10,7 +10,16 @@ def parse_pred(pred_text: str) -> str:
     """
     if not pred_text:
         return "unknown"
-    text = str(pred_text).lower().strip()
+    text = str(pred_text).strip()
+    
+    # Strip chat template / conversation prefix if present (e.g., ASSISTANT:)
+    if "ASSISTANT:" in text:
+        text = text.split("ASSISTANT:")[-1].strip()
+    elif "assistant\n" in text.lower():
+        idx = text.lower().rfind("assistant\n")
+        text = text[idx + len("assistant\n"):].strip()
+        
+    text = text.lower()
     
     # Strip leading/trailing punctuation
     cleaned = text.strip(" .,!?:;\n\t\"'()[]{}")

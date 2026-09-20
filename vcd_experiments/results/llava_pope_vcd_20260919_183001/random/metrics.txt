@@ -1,0 +1,13 @@
+{
+    "Accuracy": 87.83,
+    "Precision": 88.68,
+    "Recall": 86.73,
+    "F1": 87.7,
+    "Yes_ratio": 48.9,
+    "Total": 3000,
+    "TP": 1301,
+    "TN": 1334,
+    "FP": 166,
+    "FN": 199,
+    "Unknown": 0
+}

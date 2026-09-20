@@ -36,9 +36,11 @@ class LLaVAVCDWrapper:
         if "input_ids" in inputs:
             inputs["input_ids"] = inputs["input_ids"].to(torch.long)
 
+        prompt_len = inputs["input_ids"].shape[1]
+
         if not use_vcd:
             output_ids = self.model.generate(**inputs, **gen_kwargs)
-            return self.processor.decode(output_ids[0], skip_special_tokens=True)
+            return self.processor.decode(output_ids[0, prompt_len:], skip_special_tokens=True)
 
         # ---- VCD Generation Loop ----
         # 1. Create Distorted Image
@@ -116,4 +118,4 @@ class LLaVAVCDWrapper:
             if next_token.item() in eos_token_id:
                 break
                 
-        return self.processor.decode(input_ids[0], skip_special_tokens=True)
+        return self.processor.decode(input_ids[0, prompt_len:], skip_special_tokens=True)
