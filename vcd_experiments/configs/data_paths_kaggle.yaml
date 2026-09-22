@@ -1,9 +1,13 @@
-# Kaggle environment configuration for VCD POPE evaluation
+# Kaggle environment configuration for VCD POPE and CHAIR evaluation
 # COCO 2014 images directory on Kaggle
 coco_val2014_images: "/kaggle/input/datasets/biminhco/val2014/val2014"
 
 # POPE COCO annotations directory (located in cloned VCD repo or uploaded dataset)
 pope_coco_annotation_dir: "/kaggle/working/VCD/experiments/data/POPE/coco"
+
+# CHAIR configuration
+chair_manifest: "/kaggle/working/VCD/vcd_experiments/benchmarks/chair/selected_chair_val2014_seed2027.json"
+chair_eval_cache: "/kaggle/working/VCD/vcd_experiments/benchmarks/chair/chair.pkl"
 
 # HuggingFace Model IDs (loaded directly from HF Hub)
 models:

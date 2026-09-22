@@ -1,9 +1,11 @@
 coco_val2014_images: "/path/to/coco/val2014"
 pope_coco_annotation_dir: "/path/to/POPE/output/coco"
 beaf_data_dir: "/path/to/BEAF"
+chair_manifest: "benchmarks/chair/selected_chair_val2014_seed2027.json"
+chair_eval_cache: "benchmarks/chair/chair.pkl"
 chair_annotation_file: "/path/to/coco/annotations/instances_val2014.json"
 chair_caption_file: "/path/to/coco/annotations/captions_val2014.json"
 
 models:
-  llava_1_5_7b_ckpt: "/path/to/llava-1.5-7b-hf"
-  qwen2vl_7b_instruct_ckpt: "/path/to/Qwen2-VL-7B-Instruct"
+  llava_1_5_7b_ckpt: "llava-hf/llava-1.5-7b-hf"
+  qwen2vl_7b_instruct_ckpt: "Qwen/Qwen2-VL-7B-Instruct"

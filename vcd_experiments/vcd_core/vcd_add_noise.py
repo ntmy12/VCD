@@ -1,4 +1,28 @@
+import math
 import torch
+
+_NUM_STEPS = 1000
+
+def vcd_alpha_bar(num_steps: int = _NUM_STEPS) -> torch.Tensor:
+    betas = torch.sigmoid(torch.linspace(-6, 6, num_steps)) * (0.5e-2 - 1e-5) + 1e-5
+    return torch.cumprod(1.0 - betas, dim=0)
+
+def add_diffusion_noise_qwen2vl(pixel_values: torch.Tensor,
+                                noise_step: int,
+                                *, in_channels: int = 3,
+                                temporal_patch_size: int = 2,
+                                patch_size: int = 14,
+                                generator: torch.Generator | None = None) -> torch.Tensor:
+    assert 0 <= noise_step < _NUM_STEPS
+    assert pixel_values.ndim == 2 and pixel_values.shape[1] == in_channels * temporal_patch_size * patch_size**2
+    ab = float(vcd_alpha_bar()[noise_step])
+    n = pixel_values.shape[0]
+    x = pixel_values.float().view(n, in_channels, temporal_patch_size, patch_size, patch_size)
+    eps = torch.randn(n, in_channels, 1, patch_size, patch_size,
+                      device=x.device, dtype=torch.float32, generator=generator)
+    eps = eps.expand(-1, -1, temporal_patch_size, -1, -1)
+    out = math.sqrt(ab) * x + math.sqrt(1.0 - ab) * eps
+    return out.reshape(n, -1).to(pixel_values.dtype)
 
 def add_diffusion_noise(image_tensor, noise_step):
     """
