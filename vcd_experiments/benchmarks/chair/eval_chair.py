@@ -10,25 +10,41 @@ if CURRENT_DIR not in sys.path:
 
 from chair import CHAIR, print_metrics, save_hallucinated_words
 
+def resolve_chair_cache(cache_path: str = None) -> str:
+    candidates = []
+    if cache_path:
+        candidates.append(cache_path)
+    candidates.extend([
+        os.path.join(CURRENT_DIR, "chair.pkl"),
+        os.path.join(os.path.dirname(CURRENT_DIR), "chair", "chair.pkl"),
+        os.path.join(os.path.dirname(os.path.dirname(CURRENT_DIR)), "benchmarks", "chair", "chair.pkl"),
+        "/kaggle/working/VCD/vcd_experiments/benchmarks/chair/chair.pkl",
+        "/kaggle/working/vcd/vcd_experiments/benchmarks/chair/chair.pkl",
+        "benchmarks/chair/chair.pkl",
+        "chair.pkl"
+    ])
+    for c in candidates:
+        if c and os.path.isfile(c):
+            return os.path.abspath(c)
+    return None
+
 def evaluate_chair(results_file: str, cache_path: str = None, coco_path: str = None, output_metrics_file: str = None, save_details_file: str = None) -> dict:
     if not os.path.isfile(results_file):
         raise FileNotFoundError(f"Results file not found: {results_file}")
         
-    if not cache_path:
-        default_cache = os.path.join(CURRENT_DIR, "chair.pkl")
-        cache_path = default_cache if os.path.isfile(default_cache) else None
+    resolved_cache = resolve_chair_cache(cache_path)
 
     evaluator = None
-    if cache_path and os.path.isfile(cache_path):
-        print(f"[CHAIR Eval] Loading evaluator cache from: {cache_path}")
-        with open(cache_path, "rb") as f:
+    if resolved_cache and os.path.isfile(resolved_cache):
+        print(f"[CHAIR Eval] Loading evaluator cache from: {resolved_cache}")
+        with open(resolved_cache, "rb") as f:
             evaluator = pickle.load(f)
     elif coco_path and os.path.isdir(coco_path):
         print(f"[CHAIR Eval] Generating evaluator from COCO annotations: {coco_path}")
         evaluator = CHAIR(coco_path)
     else:
         raise FileNotFoundError(
-            f"Could not locate chair.pkl cache (checked '{cache_path}') and --coco_path not supplied."
+            f"Could not locate chair.pkl cache (checked '{cache_path}' and default fallbacks) and --coco_path not supplied."
         )
 
     res = evaluator.compute_chair(results_file, image_id_key="image_id", caption_key="caption")

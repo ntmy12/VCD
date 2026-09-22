@@ -348,24 +348,29 @@ def main():
     if cache_path and not os.path.isabs(cache_path):
         cache_path = os.path.join(VCD_EXP_DIR, cache_path)
 
-    metrics = evaluate_chair(
-        results_file=raw_outputs_file,
-        cache_path=cache_path,
-        coco_path=config.get("chair_annotation_dir", None),
-        output_metrics_file=metrics_file,
-        save_details_file=os.path.join(output_dir, "chair_details.json")
-    )
+    try:
+        metrics = evaluate_chair(
+            results_file=raw_outputs_file,
+            cache_path=cache_path,
+            coco_path=config.get("chair_annotation_dir", None),
+            output_metrics_file=metrics_file,
+            save_details_file=os.path.join(output_dir, "chair_details.json")
+        )
 
-    print("\n" + "=" * 65)
-    print(f" CHAIR BENCHMARK FINAL SUMMARY ({args.model.upper()} - {mode_str.upper()})")
-    print("=" * 65)
-    print(f"  CHAIRs (Sentence Hallucination Rate): {metrics['CHAIRs']:.2f}%")
-    print(f"  CHAIRi (Instance Hallucination Rate): {metrics['CHAIRi']:.2f}%")
-    print(f"  Recall (Ground-truth Objects Recall): {metrics['Recall']:.2f}%")
-    print(f"  Caption Length (Average Words):       {metrics['Caption_Length']:.2f} words")
-    print(f"  Total Images Evaluated:               {metrics.get('total_evaluated', len(samples))}")
-    print("=" * 65)
-    print(f"Results and metrics saved to: {output_dir}\n")
+        print("\n" + "=" * 65)
+        print(f" CHAIR BENCHMARK FINAL SUMMARY ({args.model.upper()} - {mode_str.upper()})")
+        print("=" * 65)
+        print(f"  CHAIRs (Sentence Hallucination Rate): {metrics['CHAIRs']:.2f}%")
+        print(f"  CHAIRi (Instance Hallucination Rate): {metrics['CHAIRi']:.2f}%")
+        print(f"  Recall (Ground-truth Objects Recall): {metrics['Recall']:.2f}%")
+        print(f"  Caption Length (Average Words):       {metrics['Caption_Length']:.2f} words")
+        print(f"  Total Images Evaluated:               {metrics.get('total_evaluated', len(samples))}")
+        print("=" * 65)
+        print(f"Results and metrics saved to: {output_dir}\n")
+    except Exception as e:
+        print(f"\n[CHAIR Warning] Automatic evaluation encountered an issue: {e}")
+        print(f"You can rerun evaluation directly with:")
+        print(f"  python benchmarks/chair/eval_chair.py --results_file {raw_outputs_file}\n")
 
 if __name__ == "__main__":
     main()
