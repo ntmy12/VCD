@@ -1,0 +1,15 @@
+# Google Colab environment configuration for VCD CHAIR and POPE evaluation
+# COCO 2014 images directory on Colab
+coco_val2014_images: "/content/data/val2014"
+
+# POPE COCO annotations directory
+pope_coco_annotation_dir: "/content/VCD/experiments/data/POPE/coco"
+
+# CHAIR configuration
+chair_manifest: "benchmarks/chair/selected_chair_val2014_seed2027.json"
+chair_eval_cache: "benchmarks/chair/chair.pkl"
+
+# HuggingFace Model IDs (loaded directly from HF Hub)
+models:
+  llava_1_5_7b_ckpt: "llava-hf/llava-1.5-7b-hf"
+  qwen2vl_7b_instruct_ckpt: "Qwen/Qwen2-VL-7B-Instruct"

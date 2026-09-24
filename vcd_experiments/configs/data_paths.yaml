@@ -7,4 +7,6 @@ chair_annotation_file: "/home/nvidia-lab/ai4life/phuongnh/vlm-truth/data/coco201
 chair_caption_file: "/home/nvidia-lab/ai4life/phuongnh/vlm-truth/data/coco2014/captions/annotations/captions_val2014.json"
 
 models:
+  llava_1_5_7b_ckpt: "llava-hf/llava-1.5-7b-hf"
   qwen2vl_7b_instruct_ckpt: "Qwen/Qwen2-VL-7B-Instruct"
+
