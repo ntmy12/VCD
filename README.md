@@ -1,118 +1,145 @@
-<p align="center" width="100%">
-<a target="_blank"><img src="figs/VCD_logo_title.png" alt="Visual Contrastive Decoding" style="width: 75%; min-width: 200px; display: block; margin: auto;"></a>
-</p>
+# VCD for Qwen2-VL: CHAIR Benchmark (16-bit, max_new_tokens=128, seed=2027)
 
-# VCD: Mitigating Object Hallucinations in Large Vision-Language Models through Visual Contrastive Decoding
-<!-- **VCD: Mitigating Object Hallucinations in Large Vision-Language Models through Visual Contrastive Decoding** -->
-This is the official repo for Visual Contrastive Decoding, a simple, training-free method for mitigating hallucinations in LVLMs during decoding without utilizing external tools.
+This repository is streamlined specifically to evaluate object hallucination using the **CHAIR** benchmark on **Qwen2-VL-7B-Instruct** with **Visual Contrastive Decoding (VCD)**. It runs in **16-bit precision** (`bfloat16` or `float16`), bounded at `max_new_tokens = 128`, and uses the standard reproducible **seed 2027**, optimized for **NVIDIA RTX 6000** GPUs (RTX 6000 Ada Generation, RTX A6000, Turing Quadro RTX 6000).
 
-<div style='display:flex; gap: 0.25rem; '>
-<a href='LICENCE'><img src='https://img.shields.io/badge/License-Apache 2.0-g.svg'></a>
-<a href='https://arxiv.org/abs/2311.16922'><img src='https://img.shields.io/badge/Paper-PDF-red'></a>
-<a href='https://twitter.com/Leon_L_S_C'><img src='https://img.shields.io/twitter/url/https/twitter.com/cloudposse.svg?style=social&label=Follow%20%40Us'></a>
-</div>
+---
 
-## 🔥 Update
-* [2024-04-05]: ⭐️⭐️⭐️ VCD is selected as Poster Highlight in CVPR 2024! (Top 11.9% in accepted papers)
-* [2023-11-29]: ⭐️ Paper of VCD online. Check out [this link](https://arxiv.org/abs/2311.16922) for details.
-* [2023-11-28]: 🚀 Codes released.
+## 📁 Repository Structure
 
-## 🎯 Overview
-![VCD](figs/figure1.png)
-- We introduce Visual Contrastive Decoding (VCD), **a simple and training-free** method that contrasts output distributions derived from original and distorted visual inputs.
-- The new **contrastive probability distribution** for decoding is formulated as follows:
-```math
-p_{vcd}(y \mid v, v', x) = softmax[ (1+\alpha)\times logit_\theta (y \mid v, x) - \alpha \times logit_\theta(y \mid v', x)],
+```text
+VCD_CHAIR/
+├── requirements.txt                         # Dependency requirements for NVIDIA RTX 6000
+├── run_chair.sh                             # Root launcher script
+├── README.md                                # Project documentation
+├── vcd_experiments/
+│   ├── run_chair.sh                         # Execution script (Baseline + VCD with batching)
+│   ├── wait_and_run_chair.sh                # VRAM monitor (waits for >=15GB free VRAM)
+│   ├── benchmarks/
+│   │   └── chair/
+│   │       ├── run_chair.py                 # Core caption generation and evaluation pipeline
+│   │       ├── eval_chair.py                # Standalone CHAIR evaluation (CHAIRs, CHAIRi, Recall)
+│   │       ├── chair.py                     # Independent CHAIR metric implementation
+│   │       ├── chair.pkl                    # Pre-computed COCO val2014 evaluator cache
+│   │       ├── download_chair_images.py     # Fast downloader for the 500 benchmark images
+│   │       └── selected_chair_val2014_seed2027.json # 500 standardized sample images (seed 2027)
+│   ├── configs/
+│   │   └── data_paths.yaml                  # Paths for COCO images and model checkpoints
+│   ├── models/
+│   │   └── qwen2vl_wrapper.py               # Qwen2-VL 16-bit wrapper with KV-cache VCD & batching
+│   ├── vcd_core/
+│   │   ├── vcd_add_noise.py                 # Diffusion noise injection for Qwen2-VL patches
+│   │   ├── vcd_decoding.py                  # Contrastive decoding logic & APC cutoff
+│   │   └── test_vcd_core.py                 # Unit tests for core VCD operations
+│   └── results/                             # Output raw captions and metrics.json
 ```
-- The proposed VCD effectively reduces the over-reliance on **statistical bias** and **unimodal priors**, two essential causes of object hallucinations.
 
+---
 
-## 🕹️ Usage
-### Environment Setup
+## 🎲 Seed 2027 Guarantee & Reproducibility
+
+This setup satisfies **seed 2027** across all stages:
+1. **Sample Selection**: 500 images are loaded directly from `selected_chair_val2014_seed2027.json`, which was deterministically sampled with seed 2027.
+2. **Diffusion Noise**: The visual distortion generator (`g_noise`) uses `torch.Generator().manual_seed(2027)` to inject identical Gaussian noise patterns into image patches across all runs.
+3. **Sampling Generator**: If sampling is enabled, `g_samp` is seeded deterministically (`seed + 10_000`).
+4. **Environment Seeds**: `torch.manual_seed(2027)`, `np.random.seed(2027)`, and `random.seed(2027)` are set before execution.
+
+---
+
+## 🚀 Environment Setup for NVIDIA RTX 6000
+
+Recommended Python version: **3.10** or **3.11** with **PyTorch CUDA 12.1+**:
+
 ```bash
-conda create -yn vcd python=3.9
-conda activate vcd
-cd VCD
+# 1. Create and activate a virtual environment
+conda create -n qwen2vl_chair python=3.10 -y
+conda activate qwen2vl_chair
+
+# 2. Install PyTorch with CUDA 12.1 for RTX 6000
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+
+# 3. Install remaining dependencies from requirements.txt
 pip install -r requirements.txt
+
+# 4. Download required NLTK tokenizers and word databases
+python -c "import nltk; nltk.download('punkt'); nltk.download('wordnet'); nltk.download('averaged_perceptron_tagger'); nltk.download('omw-1.4')"
 ```
 
-### How to Use VCD in LVLMs
+---
 
-The two core function of VCD, adding noise to images and generating text based on VCD sampling, are found in the `vcd_utils` folder. Scripts for using VCD sampling in LLaVA, InstructBLIP, and QwenVL are located in `VCD/eval`. We have annotated some key changes with `## cd_comment` for easy location using ctrl+f.
+## ⚙️ Dataset Configuration (`configs/data_paths.yaml`)
 
-To help you get started quickly, here's an example using LLaVA on how to replace the conventional sampling method with the VCD method during generation:
-1. Add the following at the beginning of the start-up script:
-```python
-from vcd_utils.vcd_sample import evolve_vcd_sampling
-evolve_vcd_sampling()
-```
-The `evolve_vcd_sampling` function replaces the sampling function in the transformers library. The modified sampling function includes an option for visual contrastive decoding, while keeping the rest unchanged.
+### 1. Ground-Truth Annotations
+- **NO EXTRA DOWNLOAD NEEDED**: The repository includes `benchmarks/chair/chair.pkl` (2.0 MB).
+- This cache stores all COCO val2014 ground-truth object categories, bounding box objects, and synonyms. You do not need to download the large COCO annotation files (`instances_val2014.json` / `captions_val2014.json`).
 
-2. Slightly modify `llava_llama.py`:
+### 2. Image Files (COCO val2014)
+CHAIR uses 500 images from COCO val2014 defined in `selected_chair_val2014_seed2027.json`.
 
-   a. Add contrastive decoding parameters in the `LlavaLlamaForCausalLM` class's `forward` function to avoid exceptions in `model.generate`.
-   
-   b. Add the `prepare_inputs_for_generation_cd` function.
+- **If your server already has COCO val2014**: Verify or update the path in `configs/data_paths.yaml`:
+  ```yaml
+  coco_val2014_images: "/home/nvidia-lab/ai4life/phuongnh/vlm-truth/data/coco2014/val2014"
+  ```
+- **If you are on a new machine without COCO images**: You do not need to download the full 6GB COCO dataset. Simply run the automated downloader to fetch only the 500 required images (~50MB) in less than a minute:
+  ```bash
+  cd vcd_experiments
+  python benchmarks/chair/download_chair_images.py
+  ```
+  `run_chair.py` automatically detects the downloaded `coco_chair_images/` directory.
 
-3. Add noise to the image:
-```python
-from vcd_utils.vcd_add_noise import add_diffusion_noise
-image_tensor_cd = add_diffusion_noise(image_tensor, args.noise_step)
-```
-set the hyperparameter in the `generate` function:
-```python
-output_ids = model.generate(
-    input_ids,
-    images=image_tensor.unsqueeze(0).half().cuda(),
-    images_cd=(image_tensor_cd.unsqueeze(0).half().cuda() if image_tensor_cd is not None else None),
-    cd_alpha = args.cd_alpha,
-    cd_beta = args.cd_beta,
-    do_sample=True)
-```
+---
 
-## 🏅 Experiments
-- **VCD significantly mitigates the object hallucination issue across different LVLM families.**
-![exp1](figs/exp1.png)
-*table 1(Part of). Results on POPE. Regular decoding denotes direct sampling, whereas VCD refers to sampling from our proposed contrastive distribution pvcd. The best performances within each setting are bolded.*
+## 🏃 Running the Benchmark
 
-- **Beyond mitigating object hallucinations, VCD also excels in general LVLM benchmarks, highlighting its wide-ranging applicability.**
-![exp2](figs/exp2.png)
-*figure 4. MME full set results on LLaVA-1.5. VCD consistently enhances LVLMs’ perception capacities while preserving their recognition competencies.*
-<p align="center" width="80%">
-<a target="_blank"><img src="figs/exp3.png" alt="GPT4V aided evaluation" style="width: 50%; min-width: 200px; display: block; margin: auto;"></a>
-</p>
+### 1. Run Both Baseline & VCD (Recommended)
+Default configuration uses **batch_size = 4**, **16-bit** (`bf16`), **max_new_tokens = 128**, **seed = 2027**:
+```bash
+# Run from repository root:
+bash run_chair.sh
 
-*table 3. Results of GPT-4V-aided evaluation on open-ended generation. Accuracy measures the response’s alignment with the image content, and Detailedness gauges the richness of details in the response. Both metrics are on a scale of 10.*
-
-- **Please refer to [our paper](https://arxiv.org/abs/2311.16922) for detailed experimental results.**
-
-
-
-## 📌 Examples
-![Case1](figs/case.jpg)
-*figure 5. Illustration of hallucination correction by our proposed VCD with two samples from LLaVA-Bench. Hallucinated objects from LVLM's regular decoding are highlighted in red.*
-
-![Case2](figs/case_general.jpg)
-*figure 8. More examples from LLaVA-Bench of our proposed VCD for enhanced general perception and recognition capacities.*
-
-![Case3](figs/case_hallu.jpg)
-*figure 7. More examples from LLaVA-Bench of our proposed VCD for hallucination corrections. Hallucinated objects from LVLM's regular decoding are highlighted in red.*
-
-
-## 📑 Citation
-If you find our project useful, we hope you can star our repo and cite our paper as follows:
-```
-@article{damonlpsg2023vcd,
-  author = {Sicong Leng, Hang Zhang, Guanzheng Chen, Xin Li, Shijian Lu, Chunyan Miao, Lidong Bing},
-  title = {Mitigating Object Hallucinations in Large Vision-Language Models through Visual Contrastive Decoding},
-  year = 2023,
-  journal = {arXiv preprint arXiv:2311.16922},
-  url = {https://arxiv.org/abs/2311.16922}
-}
+# Or run with larger batch size on 48GB RTX 6000:
+BATCH_SIZE=8 bash run_chair.sh
 ```
 
-## 📝 Related Projects
-- [Contrastive Decoding](https://github.com/XiangLi1999/ContrastiveDecoding): Open-ended Text Generation as Optimization
-- [InstructBLIP](https://github.com/salesforce/LAVIS/tree/main/projects/instructblip): Towards General-purpose Vision-Language Models with Instruction Tuning
-- [Qwen-VL](https://github.com/QwenLM/Qwen-VL): A Versatile Vision-Language Model for Understanding, Localization, Text Reading, and Beyond
-- [LLaVA 1.5](https://github.com/haotian-liu/LLaVA): Improved Baselines with Visual Instruction Tuning
+### 2. Run Individual Modes
+```bash
+# Run Baseline only (no VCD):
+bash run_chair.sh baseline
+
+# Run VCD only:
+bash run_chair.sh vcd
+```
+
+### 3. Automatic VRAM Monitoring
+If sharing the GPU with other workloads, wait until >= 15GB VRAM is free:
+```bash
+cd vcd_experiments
+bash wait_and_run_chair.sh
+```
+
+### 4. Direct Python Execution
+```bash
+cd vcd_experiments
+python benchmarks/chair/run_chair.py \
+    --model qwen2vl \
+    --use_vcd \
+    --batch_size 4 \
+    --max_new_tokens 128 \
+    --dtype bf16 \
+    --seed 2027
+```
+
+---
+
+## 📊 Evaluation Metrics
+
+Upon completion, `run_chair.py` automatically computes and reports:
+- **CHAIRs** (Sentence-level Hallucination Rate): Percentage of sentences containing at least one hallucinated object (lower is better).
+- **CHAIRi** (Instance-level Hallucination Rate): Ratio of hallucinated object instances to all mentioned objects (lower is better).
+- **Recall**: Percentage of ground-truth objects mentioned in generated captions.
+- **Caption Length**: Average number of words per generated caption.
+
+Detailed results are stored in `vcd_experiments/results/<run_id>/`:
+- `raw_outputs.jsonl`: Generated captions for all 500 images.
+- `run_config.json`: Complete execution hyperparameters.
+- `metrics.json`: Final evaluated metrics.
+- `chair_details.json`: Breakdown of per-image hallucinated words.
